@@ -386,7 +386,7 @@ export function DataTableTransaction({
               </Select>
               <Select 
                 defaultValue="All"
-                value={filter.status ?? ""} 
+                value={filter.paymentStatus ?? ""} 
                 onValueChange={(value) => setFilter({ ...filter, paymentStatus: value})}
               >
                 <SelectTrigger>
