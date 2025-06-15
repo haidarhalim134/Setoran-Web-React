@@ -28,6 +28,17 @@ import { LoadingOverlay } from "../loading-overlay";
 import { DropdownMenuItem } from "../ui/dropdown-menu";
 import { Pembayaran, Pengguna, StatusPembayaran, StatusTransaksi } from "@/lib/api-client";
 import { formatDateToLongDate, formatMotorName, formatPrice, translateEnum } from "@/lib/utils";
+import { isToday, isPast, differenceInCalendarDays, parseISO } from 'date-fns';
+
+const isTodayDate = (date: Date | string | null | undefined) => {
+  if (!date) return false;
+  return isToday(new Date(date));
+};
+
+const parseDate = (date: Date | string | null | undefined): Date | null => {
+  if (!date) return null;
+  return typeof date === "string" ? parseISO(date) : new Date(date);
+};
 
 const InputField = ({
   name,
@@ -72,6 +83,31 @@ export default function EditTransactionDrawer({
   const [loading, setLoading] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<any>({});
+
+  const daysOverdue = (() => {
+    const mulai = parseDate(transaksi.tanggalMulai);
+    if (!mulai || !isPast(mulai) || isToday(mulai)) return null;
+    return differenceInCalendarDays(new Date(), mulai);
+  })();
+
+  // tidak terlalu ideal safeguard di klien saja
+  const canStartTransaction =
+    transaksi.pembayaran?.statusPembayaran == StatusPembayaran.Lunas &&
+    transaksi.status === StatusTransaksi.Dibuat &&
+    parseDate(transaksi.tanggalMulai) &&
+    isPast(parseDate(transaksi.tanggalMulai)!);
+
+  const canCompleteTransaction =
+    transaksi.status === StatusTransaksi.Berlangsung &&
+    parseDate(transaksi.tanggalSelesai) &&
+    isPast(parseDate(transaksi.tanggalSelesai)!);
+
+  const completeOverdueDays = (() => {
+    const selesai = parseDate(transaksi.tanggalSelesai);
+    if (!selesai || !isPast(selesai) || isToday(selesai)) return null;
+    return differenceInCalendarDays(new Date(), selesai);
+  })();
+
 
   const apiService = ApiService.getInstance();
 
@@ -138,8 +174,28 @@ export default function EditTransactionDrawer({
         <DrawerHeader>
           <DrawerTitle>{editing ? "Edit Transaction" : "Detail Transaction"}</DrawerTitle>
           <DrawerDescription>
-            {editing && `Make changes to Transaction ID: ${idTransaksi}`}
-            {transaksi.pembayaran?.statusPembayaran === StatusPembayaran.MenungguKonfirmasi && (<><br/> This transaksi payment is pending approval.</>)}
+            {editing && `Make changes to Transaction ID: ${idTransaksi}`}  
+            {transaksi.pembayaran?.statusPembayaran === StatusPembayaran.MenungguKonfirmasi && (
+            <>
+              <br />This transaksi payment is pending approval.
+            </>
+          )}
+          {canStartTransaction && (
+            <>
+              <br />This transaction is ready to be started.
+              {daysOverdue && daysOverdue > 0 && (
+                <> It is overdue by <strong>{daysOverdue} day{daysOverdue > 1 ? "s" : ""}</strong>.</>
+              )}
+            </>
+          )}
+          {canCompleteTransaction && (
+            <>
+              <br />This transaction is ready to be completed.
+              {completeOverdueDays && completeOverdueDays > 0 && (
+                <> It is overdue by <strong>{completeOverdueDays} day{completeOverdueDays > 1 ? "s" : ""}</strong>.</>
+              )}
+            </>
+          )}
           </DrawerDescription>
         </DrawerHeader>
         {transaksi.pembayaran?.statusPembayaran === StatusPembayaran.MenungguKonfirmasi && (
@@ -150,6 +206,38 @@ export default function EditTransactionDrawer({
               className="w-full"
             >
               Confirm Payment
+            </Button>
+          </div>
+        )}
+        {canStartTransaction && (
+          <div className="px-4 pb-4">
+            <Button
+              variant="default"
+              onClick={() => {
+                apiService.transaksiApi.apiTransaksiIdPut({ id: idTransaksi, status: StatusTransaksi.Berlangsung }).then(() => {
+                  toast.success('Transaction started');
+                  refresh();
+                }).catch(() => toast.error('Failed to start transaction'));
+              }}
+              className="w-full"
+            >
+              Start Transaction
+            </Button>
+          </div>
+        )}
+        {canCompleteTransaction && (
+          <div className="px-4 pb-4">
+            <Button
+              variant="default"
+              onClick={() => {
+                apiService.transaksiApi.apiTransaksiIdPut({ id: idTransaksi, status: StatusTransaksi.Selesai }).then(() => {
+                  toast.success('Transaction completed');
+                  refresh();
+                }).catch(() => toast.error('Failed to complete transaction'));
+              }}
+              className="w-full"
+            >
+              Complete Transaction
             </Button>
           </div>
         )}
